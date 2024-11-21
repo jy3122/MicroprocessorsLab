@@ -1,212 +1,222 @@
 #include <xc.inc>
     
-global  Keypad_Setup, Keypad_read_input
+global  Keypad_Setup, Keypad_read_input, Keypad_result, Keypad_decode
 
 psect	udata_acs   ; reserve data space in access ram
-Keypad_counter: ds    1	    ; reserve 1 byte for variable Keypad_counter
-Keypad_row:ds    1;reserve 1 byte for pressed row
-Keypad_col:ds    1;reserve 1 byte for pressed columb
-Keypad_result:ds    1;reserve the decoded value
-
+Keypad_counter:	ds    1	    ; reserve 1 byte for variable Keypad_counter
+Keypad_row:	ds    1	    ; reserve 1 byte for pressed row
+Keypad_col:	ds    1	    ; reserve 1 byte for pressed column
+Keypad_result:	ds    1	    ; reserve the decoded value
+delay_count:    ds    1    ; reserve one byte for counter in the delay routine
 
 psect	keypad_code,class=CODE
     
 Keypad_Setup:
-    bsf	    REPU	; set up pullups for port E
-    clrf    LATE        ; write 0s to LATE register
+    bsf	    REPU	    ; set up pullups for port E
+    clrf    LATE, A        ; write 0s to LATE register
     movlw   0x0F        ; this is 00001111
-    movwf   TRISE       ; assign to port E, 0-3 input, 4-7 output
-    
+    movwf   TRISE,A       ; assign to port E, 0-3 input, 4-7 output
     return
     
 Keypad_scan_row:
-    movlw   0x0F        ;00001111
-    movwf   LATE        ;drive 0-3 high, drive 4-7 low
-    movlw   0x0F        ;00001111
-    movwf   TRISE       ;0-3 input, 4-7 output 
-    movwf   PORTE, W
-    andlw   0x0F        ;keep 0-3(rows), and gate
-    movwf   Keypad_row  ;save satus of row
+    movlw   0x0F        ; 00001111
+    movwf   LATE,A        ; drive 0-3 high, drive 4-7 low
+    movlw   0x0F        ; 00001111
+    movwf   TRISE,A      ; 0-3 input, 4-7 output 
+    call    delay
+    movf    PORTE, W, A
+    andlw   0x0F        ; keep 0-3(rows), and gate
+    movwf   Keypad_row, A  ; save status of row
     return
     
 Keypad_scan_col:
-    movlw   0xF0        ;11110000
-    movwf   LATE        ;drive column pins (4-7) high, row pins (0-3) low
-    movlw   0xF0        ;11110000
-    movwf   TRISE       ;0-3 output,4-7 input
-    movf    PORTE, W
-    andlw   0xF0        ;keep column status (4-7), and gate
-    movwf   Keypad_col
+    movlw   0xF0        ; 11110000
+    movwf   LATE, A        ; drive column pins (4-7) high, row pins (0-3) low
+    movlw   0xF0        ; 11110000
+    movwf   TRISE, A       ; 0-3 output,4-7 input
+    call    delay
+    movf    PORTE, W, A
+    andlw   0xF0        ; keep column status (4-7), and gate
+    movwf   Keypad_col, A
     return
     
 Keypad_decode:
     ; Check if the row is the 1st row (0x01)
-    movf KeyPad_row, W          ; Load row state into W
-    xorlw 0x01                  ; Compare with 0x01 (1st row)
-    btfss STATUS, Z             ; Skip if not equal
-    goto Check_Row2             ; Go to check the 2nd row
+    movf    Keypad_row, W, A       ; Load row state into W
+    xorlw   00000111B              ; Compare with 0x01 (1st row)
+    bnz	    Check_Row2             ; Go to check the 2nd row
  
     ; Check which column in the 1st row
-    movf KeyPad_col, W          ; Load column state into W
-    xorlw 0x10                  ; Compare with 0x10 (1st column)
-    btfss STATUS, Z
-    goto Check_Col2_1           ; Not the 1st column
-    movlw 0x01                  ; Key '1'
-    movwf KeyPad_result         ; Store result
-    goto Decode_End
+    movf    Keypad_col, W, A       ; Load column state into W
+    andlw   10000000B            ; Compare with 0x10 (1st column)
+    bnz	    Check_Col2_1           ; Not the 1st column
+    movlw   0x01                   ; Key '1'
+    movwf   Keypad_result, A       ; Store result
+    return
  
 Check_Col2_1:
-    xorlw 0x20                  ; Compare with 0x20 (2nd column)
-    btfss STATUS, Z
-    goto Check_Col3_1           ; Not the 2nd column
-    movlw 0x02                  ; Key '2'
-    movwf KeyPad_result
-    goto Decode_End
+    movf    Keypad_col, W, A       ; Load column state into W  
+    andlw   01000000B
+    ;xorlw   11010000B                   ; Compare with 0x20 (2nd column)
+    bnz	    Check_Col3_1           ; Not the 2nd column
+    movlw   0x02                   ; Key '2'
+    movwf   Keypad_result, A
+    return
  
 Check_Col3_1:
-    xorlw 0x40                  ; Compare with 0x40 (3rd column)
-    btfss STATUS, Z
-    goto Check_Col4_1           ; Not the 3rd column
-    movlw 0x03                  ; Key '3'
-    movwf KeyPad_result
-    goto Decode_End
+    movf    Keypad_col, W, A
+    andlw   00100000B
+    ;xorlw   0x40                   ; Compare with 0x40 (3rd column)
+    bnz	    Check_Col4_1           ; Not the 3rd column
+    movlw   0x03                   ; Key '3'
+    movwf   Keypad_result, A
+    return
  
 Check_Col4_1:
-    xorlw 0x80                  ; Compare with 0x80 (4th column)
-    btfss STATUS, Z
-    goto Check_Row2             ; Not the 4th column
-    movlw 0x46                  ; Key 'F'
-    movwf KeyPad_result
-    goto Decode_End
+    movf    Keypad_col, W, A
+    andlw   00010000B
+    ;xorlw   0x80                   ; Compare with 0x80 (4th column)
+    bnz	    Check_Row2             ; Not the 4th column
+    movlw   0x46                   ; Key 'F'
+    movwf   Keypad_result, A
+    return
  
 Check_Row2:
     ; Check if the row is the 2nd row (0x02)
-    movf KeyPad_row, W
-    xorlw 0x02
-    btfss STATUS, Z
-    goto Check_Row3
+    movf    Keypad_row, W, A
+    xorlw   00001011B
+    bnz	    Check_Row3
  
     ; Check which column in the 2nd row
-    movf KeyPad_col, W
-    xorlw 0x10
-    btfss STATUS, Z
-    goto Check_Col2_2
-    movlw 0x04                  ; Key '4'
-    movwf KeyPad_result
-    goto Decode_End
+    movf    Keypad_col, W, A
+    andlw   10000000B
+    ;xorlw   0x10
+    bnz	    Check_Col2_2
+    movlw   0x04                   ; Key '4'
+    movwf   Keypad_result, A
+    return
  
 Check_Col2_2:
-    xorlw 0x20
-    btfss STATUS, Z
-    goto Check_Col3_2
-    movlw 0x05                  ; Key '5'
-    movwf KeyPad_result
-    goto Decode_End
+    movf    Keypad_col, W, A
+    andlw   01000000B
+    ;xorlw   0x20
+    bnz	    Check_Col3_2
+    movlw   0x05                   ; Key '5'
+    movwf   Keypad_result, A
+    return
  
 Check_Col3_2:
-    xorlw 0x40
-    btfss STATUS, Z
-    goto Check_Col4_2
-    movlw 0x06                  ; Key '6'
-    movwf KeyPad_result
-    goto Decode_End
+    movf    Keypad_col, W, A
+    andlw   00100000B
+    ;xorlw   0x40
+    bnz	    Check_Col4_2
+    movlw   0x06                   ; Key '6'
+    movwf   Keypad_result, A
+    return
  
 Check_Col4_2:
-    xorlw 0x80
-    btfss STATUS, Z
-    goto Check_Row3
-    movlw 0x45                  ; Key 'E'
-    movwf KeyPad_result
-    goto Decode_End
+    movf    Keypad_col, W, A
+    andlw   00010000B
+    ;xorlw   0x80
+    bnz	    Check_Row3
+    movlw   0x45                   ; Key 'E'
+    movwf   Keypad_result, A
+    return
  
 Check_Row3:
     ; Check if the row is the 3rd row (0x04)
-    movf KeyPad_row, W
-    xorlw 0x04
-    btfss STATUS, Z
-    goto Check_Row4
+    movf    Keypad_row, W, A
+    xorlw   00001101B
  
     ; Check which column in the 3rd row
-    movf KeyPad_col, W
-    xorlw 0x10
-    btfss STATUS, Z
-    goto Check_Col2_3
-    movlw 0x07                  ; Key '7'
-    movwf KeyPad_result
-    goto Decode_End
+    movf    Keypad_col, W, A
+    andlw   10000000B
+    ;xorlw   0x10
+    bnz	    Check_Col2_3
+    movlw   0x07                   ; Key '7'
+    movwf   Keypad_result, A
+    return
  
 Check_Col2_3:
-    xorlw 0x20
-    btfss STATUS, Z
-    goto Check_Col3_3
-    movlw 0x08                  ; Key '8'
-    movwf KeyPad_result
-    goto Decode_End
+    movf    Keypad_col, W, A
+    andlw   01000000B
+    ;xorlw   0x20
+    bnz	    Check_Col3_3
+    movlw   0x08                   ; Key '8'
+    movwf   Keypad_result, A
+    return
  
 Check_Col3_3:
-    xorlw 0x40
-    btfss STATUS, Z
-    goto Check_Col4_3
-    movlw 0x09                  ; Key '9'
-    movwf KeyPad_result
-    goto Decode_End
+    movf    Keypad_col, W, A
+    andlw   00100000B
+    ;xorlw   0x40
+    bnz	    Check_Col4_3
+    movlw   0x09                   ; Key '9'
+    movwf   Keypad_result, A
+    return
  
 Check_Col4_3:
-    xorlw 0x80
-    btfss STATUS, Z
-    goto Check_Row4
-    movlw 0x44                  ; Key 'D'
-    movwf KeyPad_result
-    goto Decode_End
+    movf    Keypad_col, W, A
+    andlw   00010000B
+    ;xorlw   0x80
+    bnz	    Check_Row4
+    movlw   0x44                   ; Key 'D'
+    movwf   Keypad_result, A
+    return
  
 Check_Row4:
     ; Check if the row is the 4th row (0x08)
-    movf KeyPad_row, W
-    xorlw 0x08
-    btfss STATUS, Z
-    goto Decode_End
+    movf    Keypad_row, W, A
+    xorlw   00001110B
+    bnz	    Check_Row4
+    return			    ; If no key pressed, return
  
     ; Check which column in the 4th row
-    movf KeyPad_col, W
-    xorlw 0x10
-    btfss STATUS, Z
-    goto Check_Col2_4
-    movlw 0x41                  ; Key 'A'
-    movwf KeyPad_result
-    goto Decode_End
+    movf    Keypad_col, W, A
+    andlw   10000000B
+    ;xorlw   0x10
+    bnz	    Check_Col2_4
+    movlw   0x41                   ; Key 'A'
+    movwf   Keypad_result, A
+    return
  
 Check_Col2_4:
-    xorlw 0x20
-    btfss STATUS, Z
-    goto Check_Col3_4
-    movlw 0x00                  ; Key '0'
-    movwf KeyPad_result
-    goto Decode_End
+    movf    Keypad_col, W, A
+    andlw   01000000B
+    ;xorlw   0x20
+    bnz	    Check_Col3_4
+    movlw   0x00                   ; Key '0'
+    movwf   Keypad_result, A
+    return
  
 Check_Col3_4:
-    xorlw 0x40
-    btfss STATUS, Z
-    goto Check_Col4_4
-    movlw 0x42                  ; Key 'B'
-    movwf KeyPad_result
-    goto Decode_End
+    movf    Keypad_col, W, A
+    andlw   00100000B
+    ;xorlw   0x40
+    bnz	    Check_Col4_4
+    movlw   0x42                   ; Key 'B'
+    movwf   Keypad_result, A
+    return
  
 Check_Col4_4:
-    xorlw 0x80
-    btfss STATUS, Z
-    goto Decode_End
-    movlw 0x43                  ; Key 'C'
-    movwf KeyPad_result
-    goto Decode_End
- 
-Decode_End:
+    movf    Keypad_col, W, A
+    andlw   00010000B
+    ;xorlw   0x80
+    return
+    movlw   0x43                   ; Key 'C'
+    movwf   Keypad_result, A
     return
     
 Keypad_read_input:
-    call Keypad_scan_row
-    call Keypad_scan_col
-    call Keypad_decode
+    call    Keypad_scan_row
+    call    Keypad_scan_col
+    call    Keypad_decode
     return
     
-
+delay:	
+    decfsz  delay_count, A	    ; decrement until zero
+    bra	    delay
+    return
+    
+    end
 
